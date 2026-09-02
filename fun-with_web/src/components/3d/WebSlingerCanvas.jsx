@@ -200,15 +200,34 @@ function PhysicsLoop({
       const nextY = pos.y + vel.y * dt * 60;
       const nextZ = pos.z + vel.z * dt * 60;
 
-      // ── 2. AABB Wall Collision ────────────────────────────────────
+      // ── 2. AABB Wall & Rooftop Collision ─────────────────────────
       let collided = false;
+      let landedOnRoof = false;
+
       for (let i = 0; i < cityColliders.length; i++) {
         const c = cityColliders[i];
-        const insideX = nextX > c.minX - COLLISION_RADIUS && nextX < c.maxX + COLLISION_RADIUS;
-        const insideZ = nextZ > c.minZ - COLLISION_RADIUS && nextZ < c.maxZ + COLLISION_RADIUS;
-        const aboveGround = nextY < c.height;
+        const insideX = nextX >= c.minX && nextX <= c.maxX;
+        const insideZ = nextZ >= c.minZ && nextZ <= c.maxZ;
+        const roofHeight = c.height;
 
-        if (insideX && insideZ && aboveGround) {
+        // 2.1 Rooftop Landing Detection: if avatar falls onto rooftop plane
+        if (insideX && insideZ && pos.y >= roofHeight - 1.0 && nextY <= roofHeight + 0.5) {
+          pos.x = nextX;
+          pos.z = nextZ;
+          pos.y = roofHeight;
+          vel.set(0, 0, 0);
+          landedOnRoof = true;
+          playerStateRef.current = 'IDLE';
+          cameraShakeRef.current = 0.35;
+          break;
+        }
+
+        // 2.2 Side Wall Collision Check
+        const nearX = nextX > c.minX - COLLISION_RADIUS && nextX < c.maxX + COLLISION_RADIUS;
+        const nearZ = nextZ > c.minZ - COLLISION_RADIUS && nextZ < c.maxZ + COLLISION_RADIUS;
+        const belowRoof = nextY < roofHeight;
+
+        if (nearX && nearZ && belowRoof) {
           const dLeft  = Math.abs(nextX - c.minX);
           const dRight = Math.abs(nextX - c.maxX);
           const dFront = Math.abs(nextZ - c.minZ);
@@ -234,22 +253,41 @@ function PhysicsLoop({
         }
       }
 
-      if (!collided) { pos.x = nextX; pos.z = nextZ; }
-      pos.y = nextY;
+      if (!landedOnRoof) {
+        if (!collided) { pos.x = nextX; pos.z = nextZ; }
+        pos.y = nextY;
 
-      // ── 3. Y boundaries ──────────────────────────────────────────
-      vel.y -= 0.009 * dt * 60;
-      if (pos.y > Y_CEILING) vel.y -= 0.05 * dt * 60;
-      if (pos.y <= Y_FLOOR)  { pos.y = Y_FLOOR; vel.y = Math.abs(vel.y) * 0.3; }
+        // ── 3. Y boundaries ──────────────────────────────────────────
+        vel.y -= 0.009 * dt * 60;
+        if (pos.y > Y_CEILING) vel.y -= 0.05 * dt * 60;
+        if (pos.y <= Y_FLOOR)  { pos.y = Y_FLOOR; vel.y = Math.abs(vel.y) * 0.3; }
 
-      vel.x *= Math.pow(0.965, dt * 60);
-      vel.y *= Math.pow(0.965, dt * 60);
-      vel.z *= Math.pow(0.965, dt * 60);
+        vel.x *= Math.pow(0.965, dt * 60);
+        vel.y *= Math.pow(0.965, dt * 60);
+        vel.z *= Math.pow(0.965, dt * 60);
 
-      const spd = vel.length();
-      if (spd < 0.05 && pos.y <= Y_FLOOR + 0.2) {
-        playerStateRef.current = 'IDLE';
-        vel.set(0, 0, 0);
+        const spd = vel.length();
+        if (spd < 0.05 && pos.y <= Y_FLOOR + 0.2) {
+          playerStateRef.current = 'IDLE';
+          vel.set(0, 0, 0);
+        }
+      }
+    } else if (playerStateRef.current === 'IDLE') {
+      // Check if player is standing on roof and steps off or if gravity should pull
+      let onAnyRoof = false;
+      for (let i = 0; i < cityColliders.length; i++) {
+        const c = cityColliders[i];
+        if (pos.x >= c.minX && pos.x <= c.maxX && pos.z >= c.minZ && pos.z <= c.maxZ) {
+          if (Math.abs(pos.y - c.height) <= 1.5) {
+            pos.y = c.height; // Lock cleanly to rooftop
+            onAnyRoof = true;
+            break;
+          }
+        }
+      }
+      if (!onAnyRoof && pos.y > Y_FLOOR) {
+        // Falling off building
+        pos.y = Math.max(Y_FLOOR, pos.y - 0.25 * dt * 60);
       }
     }
 
