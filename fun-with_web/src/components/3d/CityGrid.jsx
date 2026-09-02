@@ -279,7 +279,8 @@ export function CityGrid({ playerPosRef, onBuildingPointerDown = null }) {
             onPointerDown={(e) => {
               e.stopPropagation();
               if (onBuildingPointerDown && e.point) {
-                onBuildingPointerDown(e.point);
+                // Forward clientX/clientY so WebSlingerCanvas drag-start is accurate
+                onBuildingPointerDown(e.point, e.clientX ?? e.nativeEvent?.clientX ?? 0, e.clientY ?? e.nativeEvent?.clientY ?? 0);
               }
             }}
           />
